@@ -1,0 +1,7 @@
+data/scienceqa_test_data.jsonl
+data/scienceqa_test_data.parquet
+data/scienceqa_train_data.jsonl
+data/scienceqa_train_data.parquet
+data/ScienceQA/test.parquet
+data/ScienceQA/train.parquet
+data/ScienceQA/validation.parquet

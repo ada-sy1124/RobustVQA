@@ -113,6 +113,7 @@ def get_format_reward(response):
     pattern = r"^<think>.*?</think>\s*<answer>.*?</answer>$"
     if not re.match(pattern, response, re.DOTALL):
         return -1.0
+    
     if len(re.findall(r"<think>", response)) != 1 or len(re.findall(r"<answer>", response)) != 1:
         return -1.0
 

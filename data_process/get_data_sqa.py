@@ -225,3 +225,61 @@ if __name__ == "__main__":
     generate_test_data("../data/ScienceQA/train.parquet", "../data/scienceqa_train_data.jsonl")
     generate_test_data("../data/ScienceQA/test.parquet", "../data/scienceqa_test_data.jsonl")
     
+
+# {
+#   "prompt": [
+#     {
+#       "role": "user",
+#       "content": [
+#         {
+#           "type": "image_url",
+#           "image_url": {
+#             "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD... (这里是一段极长的由图片转换来的乱码字符串) ..."
+#           }
+#         },
+#         {
+#           "type": "text",
+#           "text": "Analyze the provided image and answer the following multiple-choice question.\n\nYour task is to first generate a step-by-step reasoning process, and then provide only the final chosen letter (A, B or C).\n\n**STRICT OUTPUT FORMAT:**\nYou must strictly adhere to the following structure:\n<think>\n[Your comprehensive, step-by-step reasoning process here.]\n</think>\n<answer>\n[The single letter corresponding to your final choice (A, B or C). NOTHING ELSE.]\n</answer>\n\nQuestion: Which of these states is farthest north?\nOptions:\nA. Texas\nB. Alaska\nC. Florida"
+#         }
+#       ]
+#     }
+#   ],
+#   "non_thinking_prompt": [
+#     {
+#       "role": "user",
+#       "content": [
+#         {
+#           "type": "image_url",
+#           "image_url": {
+#             "url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD... (与上面完全相同的一串图片代码) ..."
+#           }
+#         },
+#         {
+#           "type": "text",
+#           "text": "Analyze the provided image and answer the following multiple-choice question.
+#           "Your task is to provide only the final chosen letter (A, B or C)."
+
+#           **STRICT OUTPUT FORMAT:**
+#           You must strictly adhere to the following structure:
+
+#           <answer>
+#           [The single letter corresponding to your final choice (A, B or C). NOTHING ELSE.]
+#           </answer>
+          
+#           Question: Which of these states is farthest north?
+#           Options:
+#           A. Texas
+#           nB. Alaska
+#           C. Florida"
+#         }
+#       ]
+#     }
+#   ],
+#   "question": "Which of these states is farthest north?",
+#   "ground_truth": "B",
+#   "choices": [
+#     "Texas",
+#     "Alaska",
+#     "Florida"
+#   ]
+# }
