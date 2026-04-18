@@ -1,112 +1,227 @@
-# 电商退换货场景下的多模态推理对齐
+# RobustVQA：电商鲁棒视觉问答与多模态思维链强化学习
 
-本项目围绕**电商客服退换货**场景，用强化学习对齐多模态大模型（MLLM）的推理行为：抑制**迎合用户情绪、脱离事实的伪推理**，缓解奖励稀疏，并提升逻辑自洽与可解释性。基座模型为 **Qwen3-VL-8B-Instruct**；训练侧基于开源 RL 框架 **[verl](https://github.com/volcengine/verl)**（HybridFlow）扩展。
+## 1. 项目概述
 
----
+### 1.1 项目目标与任务定义
 
-## 项目背景
+RobustVQA 旨在通过强化学习（RL）训练一个在多模态问答任务中具备更强准确性、鲁棒性与可解释性的 VQA 系统。项目核心不是只优化最终答案，而是同时优化：
+- 最终答案正确性
+- 推理过程（CoT）的逻辑自洽性（Self-Consistency）
+- 推理过程可验证性（Verifiability）
 
-- **问题**：在退换货、退款等高风险对话里，多模态大模型容易被用户情绪带偏，生成缺乏视觉证据支撑的错误结论。
-- **目标**：构建面向电商售后风险场景的 RL 推理对齐机制，让模型优先依据图像与事实证据决策，而非迎合情绪。
+任务要求模型输入图像与多选题后，严格输出结构化结果：
 
----
+```text
+<think>
+...
+</think>
+<answer>
+...
+</answer>
+```
 
-## 业务逻辑总览
+若输出不符合结构规范，将被格式奖励惩罚。
 
-本项目的核心业务流为：
-1. 从真实电商评价中构造“**真实投诉 + 对抗性伪投诉**”混合数据。
-2. 将退款处理决策离散化为可学习的标签空间。
-3. 通过复合奖励训练模型，让其在情绪干扰下仍能遵循规则并保持证据一致。
-4. 在评测中同时考察标签准确率、逻辑一致性与输出格式合规性。
+### 1.2 现状挑战
 
----
+当前多模态模型在复杂科学问答（如 ScienceQA）上常见问题：
+- CoT 可能是事后合理化，并非驱动答案的真实因果链
+- 仅用二元准确率奖励（答对 1 / 答错 0）信号过于稀疏
+- 难以同时优化答对、逻辑可靠、输出规范
 
-## 数据集构建逻辑（已完成）
+### 1.3 技术路线与创新点
 
-### 原始数据来源
+基于 `Qwen2.5-VL-7B-Instruct`，使用 RL 优化如下复合奖励：
 
-基于 **Amazon Review Data** 提取带图样本，每条样本至少包含三列：
-- `<image>`：用户评价图像
-- `<review>`：用户评价/诉求文本
-- `<score>`：用户给出的评分
+$$
+R_{Total}=0.7\times R_{Acc}+0.3\times R_{Consistency}+R_{Length}+R_{Format}
+$$
 
-### 真假混合数据构建
-
-构建“真实 + 对抗”混合数据集：
-- **30% 真实低星样本**：提取低星且图文一致的负向评价（例如图片显示衣服破损，文本也明确投诉破损）。
-- **70% 高星对抗样本**：提取 4-5 星好评图片（商品通常完好），再通过先进大模型生成“与图像事实不符的愤怒退款诉求”。
-- 将两部分样本打乱混合，形成最终训练/评测数据。
-
-### 标签生成规则（Ground Truth）
-
-在混合数据上，按 `score` 直接映射退款标签：
-- `score in [4,5]` -> **拒绝退款**
-- `score = 3` -> **补偿**
-- `score in [1,2]` -> **退货退款**
-- `score = 0` -> **仅退款**
-
-依照上述规则自动生成 `ground_truth label`，当前数据集已完成构建并可直接用于训练与评测。
-
-> 说明：该规则的目标是显式约束“情绪表达”与“平台处理决策”的映射边界，避免模型被愤怒语气误导。
+关键创新：
+- 两阶段一致性校验奖励 `R_Consistency`
+- 条件长度激励 `R_Length`（只在答错时激活）
 
 ---
 
-## 打分机制与奖励设计
+## 2. 强化学习奖励机制（重点）
 
-为避免只优化单一准确率带来的训练不稳定，本项目采用复合打分机制，核心包括：
+### 2.1 总奖励架构
 
-1. **决策正确性分（Accuracy Score）**
-   - 检查模型输出标签是否与 `ground_truth` 一致。
+$$
+R_{Total}=0.7\times R_{Acc}+0.3\times R_{Consistency}+R_{Length}+R_{Format}
+$$
 
-2. **证据一致性分（Evidence Consistency Score）**
-   - 检查推理是否引用图像与文本中的可验证事实。
-   - 对“图像完好却强行断言损坏”等伪证据推理施加惩罚。
+- `R_Acc`：答案正确性主导项
+- `R_Consistency`：逻辑链可验证性约束项
+- `R_Length`：深度思考激励项（带豁免）
+- `R_Format`：结构输出硬约束项
 
-3. **逻辑稳健性分（Reasoning Robustness Score）**
-   - 检查结论是否由规则和证据推导，而非直接受情绪词驱动。
+### 2.2 Acc Reward
 
-4. **格式合规分（Format Compliance Score）**
-   - 检查输出是否满足预定义结构（如 `<think>/<answer>`、仅输出合法标签等）。
+- 预测选项等于标准答案：`R_Acc = 1.0`
+- 否则：`R_Acc = 0.0`
 
-最终将多项得分组合为训练奖励，缓解奖励稀疏并提升训练可控性。
+### 2.3 Consistency Reward（两阶段逻辑校验）
+
+#### 阶段一：初始推理
+模型基于完整输入（图像+问题+选项）生成：
+- 思维链 `C1`
+- 初始答案 `A1`
+
+#### 阶段二：逻辑审计
+移除图像输入，仅给 `C1` 与打乱顺序后的选项，要求模型作为逻辑校验器推导答案 `A2`。
+
+目标：检验 `C1` 是否包含足以独立支撑结论的证据链。
+
+#### `R_Consistency` 打分表
+
+| 情景 | A1（多模态） | A2（仅CoT） | 逻辑状态 | R_Consistency |
+|---|---|---|---|---|
+| I 理想 CoT | 正确 | 正确 | 逻辑自证完整 | 1.0 |
+| II 正确但 CoT 缺陷 | 正确 | 错误 | 逻辑不自洽 | 0.5 |
+| III 错误但意外自洽 | 错误 | 正确 | 逻辑不自洽 | 0.5 |
+| IV 逻辑稳定但错误 | 错误 | 错误且 A1=A2 | 逻辑一致但结论错 | 0.1 |
+| V 逻辑混乱且错误 | 错误 | 错误且 A1≠A2 | 逻辑混乱 | 0.0 |
+
+### 2.4 Length Reward（条件激励）
+
+长度阈值：
+- `l_min = 50`
+- `l_opt = 100`
+- `l_max = 220`
+
+$$
+R_{Length}(L)=
+\begin{cases}
+-1 & L<50 \\
+-1+\frac{L-50}{100-50} & 50\le L<100 \\
+0 & 100\le L\le 220 \\
+-1 & L>220
+\end{cases}
+$$
+
+豁免机制：
+- 若 `R_Acc=1.0`，强制 `R_Length=0`
+- 只在答错样本上激活长度激励，鼓励更深入探索
+
+### 2.5 Format Reward（硬约束）
+
+- 严格匹配 `<think>...</think><answer>...</answer>`：`R_Format=0.0`
+- 否则：`R_Format=-1.0`
+
+实现细节上做两层校验：
+- 正则 pattern 校验
+- `think` / `answer` 标签唯一性校验（防止多重 answer 漏洞）
 
 ---
 
-## 核心贡献
+## 3. 数据集构建与预处理
 
-### 数据管线
+### 3.1 核心数据源
 
-- 基于 Amazon Review Data 构建电商退款场景多模态样本。
-- 实现“30%真实低星 + 70%高星伪怒诉”的对抗混合策略。
-- 建立基于评分规则的自动化标签体系，稳定产出 `ground_truth`。
+基于 `derek-thomas/ScienceQA` 进行训练和评估。
 
-### 奖励设计
+核心字段包括：
+- `image`
+- `question`
+- `choices`
+- `answer`
 
-- 设计复合奖励，解耦准确率、证据一致、逻辑稳健、格式合规等目标。
-- 通过过程信号约束伪推理，提升模型在高情绪客诉下的决策稳定性。
+### 3.2 筛选规则
 
-### 策略与训练设计
+- 图像有效性过滤：`image` 非空
+- 选项数量过滤：`len(choices) >= 2`
 
-- 引入针对长链推理与结构化回答的策略约束。
-- 促使模型在跨模态信息融合中保持可解释、可追溯的决策路径。
+经过筛选后得到高质量可训练样本，用于 RL 的 train/val 划分。
+
+### 3.3 数据脚本
+
+- 数据处理：`data_process/get_data_sqa.py`（兼容入口）
+- 主逻辑脚本：`data_process/get_data_spa.py`
+- 样本检查：`data_process/查看数据.py`
 
 ---
 
-## 仓库结构（与本项目直接相关部分）
+## 4. 训练与部署细节
+
+### 4.1 环境依赖（Python 3.10）
+
+```bash
+pip install vllm==0.8.5.post1
+pip install qwen-vl-utils
+pip install flash-attn==2.7.4.post1
+pip install transformers==4.52.4
+pip install torch==2.6.0 torchaudio==2.6.0 torchvision==0.21.0
+
+cd /hy-tmp/RobustVQA/verl
+pip install -e .
+```
+
+### 4.2 Self-Verifier 服务
+
+```bash
+export CUDA_VISIBLE_DEVICES=0
+
+python -m vllm.entrypoints.openai.api_server \
+  --model /hy-tmp/modelscope_cache/models/Qwen/Qwen2.5-VL-7B-Instruct \
+  --served-model-name Qwen2.5-VL-7B-Instruct \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --gpu-memory-utilization 0.9 \
+  --max-model-len 4096 \
+  --dtype bfloat16 \
+  --trust-remote-code
+```
+
+### 4.3 RL 训练（GRPO）
+
+训练脚本：`verl/scripts/run_grpo.sh`
+
+关键配置（示例）：
+- 模型：`Qwen2.5-VL-7B-Instruct`
+- `trainer.total_epochs=2`
+- `actor_rollout_ref.rollout.n=8`
+- `data.train_batch_size=64`
+- `actor_rollout_ref.actor.optim.lr=1e-6`
+- 多卡训练：`trainer.n_gpus_per_node=4`
+
+实际运行前需按本机路径修改 `TRAIN_FILES` / `VAL_FILES` / `MODEL_PATH` / `OUTPUT_PATH`。
+
+---
+
+## 5. 测评与性能
+
+测评脚本：`eval/run.sh`
+
+测评前先启动 vLLM 服务，再设置：
+- `MODEL_SERVER`
+- `MODEL_PATH`
+- `dataset`
+
+当前流程默认评估 `jsonl` 数据集并计算准确率。
+
+### 5.1 结果示例
+
+| 模型 | 测试集 Acc | 提升 |
+|---|---:|---:|
+| Qwen2.5-VL-7B-Instruct | 80.91% | N/A |
+| RL-step-194 | 91.03% | +10.12pp |
+
+---
+
+## 6. 仓库结构
 
 | 路径 | 说明 |
-|------|------|
-| `data_process/` | 数据构造与预处理脚本（含 `get_data_spa.py`、提示模板、样本查看工具） |
-| `eval/` | 模型回复拉取与测评脚本（标签准确率与输出结果统计） |
-| `verl/` | RL 训练库本体；与本课题相关的奖励扩展点见 `verl/verl/workers/reward_manager/utils/rewards.py` |
-
-更完整的安装、分布式训练与算法说明请参考上游文档：[verl 文档](https://verl.readthedocs.io/en/latest/index.html)。
+|---|---|
+| `data_process/` | 数据构造、预处理、样本检查 |
+| `eval/` | 推理拉取与指标统计 |
+| `verl/` | RL 训练框架与扩展奖励逻辑 |
 
 ---
 
-## 致谢与引用
+## 7. 致谢与引用
 
-强化学习训练基础设施来自 ByteDance Seed 团队开源的 **verl / HybridFlow**。若使用 verl 进行研究，建议引用：
+训练基础设施来自 ByteDance Seed 团队开源的 `verl / HybridFlow`。
 
 ```bibtex
 @article{sheng2024hybridflow,
@@ -116,5 +231,3 @@
   journal = {arXiv preprint arXiv: 2409.19256}
 }
 ```
-
-论文链接：[HybridFlow](https://arxiv.org/abs/2409.19256v2)。
