@@ -164,7 +164,7 @@ export CUDA_VISIBLE_DEVICES=0
 
 python -m vllm.entrypoints.openai.api_server \
   --model /hy-tmp/modelscope_cache/models/Qwen/Qwen3-VL-8B-Instruct \
-  --served-model-name Qwen2.5-VL-7B-Instruct \
+  --served-model-name Qwen3-VL-8B-Instruct \
   --host 0.0.0.0 \
   --port 8000 \
   --gpu-memory-utilization 0.9 \
