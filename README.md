@@ -102,7 +102,7 @@ $$
 
 豁免机制：
 - 若 `R_Acc=1.0`，强制 `R_Length=0`
-- 只在答错样本上激活长度激励，鼓励更深入探索
+- 只在答错样本上激活长度激励，鼓励更深入探索，100-220的长度是对模型的正确CoT做四分位数分箱统计出来的
 
 ### 2.5 Format Reward（硬约束）
 
@@ -163,7 +163,7 @@ pip install -e .
 export CUDA_VISIBLE_DEVICES=0
 
 python -m vllm.entrypoints.openai.api_server \
-  --model /hy-tmp/modelscope_cache/models/Qwen/Qwen2.5-VL-7B-Instruct \
+  --model /hy-tmp/modelscope_cache/models/Qwen/Qwen3-VL-8B-Instruct \
   --served-model-name Qwen2.5-VL-7B-Instruct \
   --host 0.0.0.0 \
   --port 8000 \
@@ -178,7 +178,7 @@ python -m vllm.entrypoints.openai.api_server \
 训练脚本：`verl/scripts/run_grpo.sh`
 
 关键配置（示例）：
-- 模型：`Qwen2.5-VL-7B-Instruct`
+- 模型：`Qwen3-VL-8B-Instruct`
 - `trainer.total_epochs=2`
 - `actor_rollout_ref.rollout.n=8`
 - `data.train_batch_size=64`
@@ -204,8 +204,8 @@ python -m vllm.entrypoints.openai.api_server \
 
 | 模型 | 测试集 Acc | 提升 |
 |---|---:|---:|
-| Qwen2.5-VL-7B-Instruct | 80.91% | N/A |
-| RL-step-194 | 91.03% | +10.12pp |
+| Qwen3-VL-8B-Instruct | 60.91% | N/A |
+| RL-step-194 | 68.03% | +8.12pp |
 
 ---
 
