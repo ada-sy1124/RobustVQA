@@ -19,7 +19,7 @@ def inspect_parquet(path: Path, n: int) -> None:
     if len(df) > 0:
         row = df.iloc[0].to_dict()
         print("\n=== first sample preview ===")
-        for k in ["sample_id", "ground_truth", "label_desc", "question", "choices"]:
+        for k in ["sample_id", "score", "ground_truth", "label_desc", "sample_type", "is_adversarial", "question", "choices"]:
             if k in row:
                 print(f"{k}: {row[k]}")
 
@@ -39,8 +39,11 @@ def inspect_jsonl(path: Path, n: int) -> None:
     for i, row in enumerate(rows):
         print(f"\n--- sample {i} ---")
         print("sample_id:", row.get("sample_id"))
+        print("score:", row.get("score"))
         print("ground_truth:", row.get("ground_truth"))
         print("label_desc:", row.get("label_desc"))
+        print("sample_type:", row.get("sample_type"))
+        print("is_adversarial:", row.get("is_adversarial"))
         print("choices:", row.get("choices"))
         q = row.get("question", "")
         print("question:", (q[:220] + "...") if len(q) > 220 else q)

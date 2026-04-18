@@ -1,52 +1,90 @@
-# data_process（电商退换货多模态数据管线）
+# data_process（退款诉求多模态数据管线）
 
-该目录已从 ScienceQA 处理逻辑改为 README 对应的电商退款场景：
-- 基于 Amazon Review 风格字段构造样本。
-- 自动合成对抗性客诉文本（情绪化 + 事实摘要）。
-- 自动打退款决策标签（A/B/C/D）。
-- 产出训练用表格文件 + 评测用 JSONL（含 `prompt` / `non_thinking_prompt`）。
+当前主脚本：`get_data_spa.py`
 
-## 1. 主脚本
+`get_data_sqa.py` 仍可运行，但只是兼容入口，会转调到 `get_data_spa.py`。
 
-`get_data_sqa.py`
+## 1) 适配的数据逻辑
 
-虽然文件名保留历史命名，但内容已切换为电商退款数据构造器。
+### 输入样本结构
+每条样本至少包含三列：
+- `<image>`：商品图像（可为 HF image dict / bytes / 本地图片路径）
+- `<review>`：用户退款诉求文本
+- `<score>`：评分（0~5，支持浮点）
 
-## 2. 输入支持
+### 混合数据构建规则（可选）
+脚本支持从原始 Amazon 数据构建混合集：
+- 真实低星带图评价：30%（默认 `score<=2`）
+- 高星样本伪造愤怒退款诉求：70%（默认 `score>=4`）
+- 打乱后输出
 
-支持输入：`.parquet` / `.jsonl` / `.csv` / `.tsv`。
+默认模式下，脚本认为你的混合数据集已经构建完成，直接读取 `<image,review,score>` 并生成训练/评测数据。
 
-默认按优先级自动匹配字段：
-- 图片字段：`image,images,review_image,image_bytes,main_image`
-- 文本字段：`review_body,reviewText,text,content,review,complaint`
-- 标题字段：`product_title,title,summary,headline,asin_title`
-- 评分字段：`star_rating,rating,score,overall`
+### Ground Truth 标注规则（固定）
+按 `score` 直接映射：
+- `score in [4,5]` -> `D`（拒绝退款）
+- `score = 3` -> `C`（部分补偿）
+- `score in [1,2]` -> `B`（退货退款）
+- `score = 0` -> `A`（仅退款）
 
-你可以通过参数覆盖这些字段名。
+## 2) 输出字段
 
-## 3. 标签定义
+评测 JSONL 中包含：
+- `prompt`
+- `non_thinking_prompt`
+- `question`
+- `review`
+- `score`
+- `ground_truth`
+- `choices`
+- `label_desc`
+- `sample_type`
+- `is_adversarial`
 
-- `A`：直接全额退款（无需退货）
-- `B`：退货验收后退款
-- `C`：暂不退款，需补充有效凭证
-- `D`：不支持退款（非质量问题或超出政策范围）
+训练表格中保留兼容字段：
+- `images`
+- `prompt`（`<image>...`）
+- `ground_truth`
+- `choices`
+- `score`
 
-## 4. 运行示例
+## 3) 运行命令
 
+### A. 你的“已构建数据集”直接转训练/评测格式（默认推荐）
 ```bash
-python3 data_process/get_data_sqa.py \
-  --input data/amazon_reviews_with_image.jsonl \
-  --train-parquet data/ecom_refund_train.parquet \
-  --test-parquet data/ecom_refund_test.parquet \
-  --train-jsonl data/ecom_refund_train.jsonl \
-  --test-jsonl data/ecom_refund_test.jsonl
+python3 data_process/get_data_spa.py \
+  --input data/your_mixed_dataset.jsonl \
+  --train-table data/ecom_refund_score_rule_train.parquet \
+  --test-table data/ecom_refund_score_rule_test.parquet \
+  --train-jsonl data/ecom_refund_score_rule_train.jsonl \
+  --test-jsonl data/ecom_refund_score_rule_test.jsonl
 ```
 
-如果本地没有 `pyarrow/fastparquet`，将 `--train-parquet` / `--test-parquet` 改成 `.jsonl` 或 `.csv` 即可。
-
-## 5. 查看样本
-
+### B. 从原始 Amazon 数据按 30/70 构建混合数据并输出
 ```bash
-python3 data_process/查看数据.py --file data/ecom_refund_test.jsonl --num 3
+python3 data_process/get_data_spa.py \
+  --input data/amazon_raw_with_image.jsonl \
+  --build-mixed \
+  --synthesis-mode openai \
+  --synthesis-model gpt-4.1-mini \
+  --real-ratio 0.3 \
+  --fake-ratio 0.7 \
+  --low-score-max 2 \
+  --high-score-min 4 \
+  --train-table data/ecom_refund_score_rule_train.parquet \
+  --test-table data/ecom_refund_score_rule_test.parquet \
+  --train-jsonl data/ecom_refund_score_rule_train.jsonl \
+  --test-jsonl data/ecom_refund_score_rule_test.jsonl
 ```
 
+## 4) 查看样本
+
+```bash
+python3 data_process/查看数据.py --file data/ecom_refund_score_rule_test.jsonl --num 3
+```
+
+## 5) 依赖说明
+
+- 读写 `.parquet` 需要 `pyarrow` 或 `fastparquet`
+- 若本地无 parquet 依赖，可把输出后缀改为 `.jsonl` / `.csv` / `.tsv`
+- 使用 `--synthesis-mode openai` 时，需要安装 `openai` 并设置 `OPENAI_API_KEY`
