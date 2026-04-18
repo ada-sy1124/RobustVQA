@@ -1,59 +1,68 @@
-import pandas as pd
-
-# 读取你的 parquet 文件
-df = pd.read_parquet("/Applications/Documents/RobustVQA/data/ScienceQA/train.parquet")
-
-# 1. 查看前 5 行数据，看看长什么样
-print("=== 前 5 行数据 ===")
-print(df.head(2))
-
-# 2. 查看这个表有哪些列、每列的数据类型
-print("\n=== 数据集信息 ===")
-print(df.info())
-
-# 3. 如果某一行文本太长被折叠了，可以单独打印某一行某一列看看（比如第一行的 question）
-print("\n=== 第一条题干内容 ===")
-print(df.iloc[0]['question'])
+import argparse
+import json
+from pathlib import Path
 
 import pandas as pd
-import io
-from PIL import Image
 
-# 替换为你实际的文件路径
-file_path = "/Applications/Documents/RobustVQA/data/ScienceQA/train.parquet" # 请改成你真实的路径
-df = pd.read_parquet("/Applications/Documents/RobustVQA/data/ScienceQA")
 
-# 我们直接取第 0 行数据（刚才看到这一行是有图片的）
-sample = df.iloc[10].to_dict()
+def inspect_parquet(path: Path, n: int) -> None:
+    df = pd.read_parquet(path)
+    print(f"=== Parquet: {path} ===")
+    print(f"rows: {len(df)}, cols: {len(df.columns)}")
+    print("columns:")
+    for c in df.columns:
+        print(f"- {c}")
 
-print("================ 完整单条样本展示 ================\n")
+    print(f"\n=== head({n}) ===")
+    print(df.head(n))
 
-for key, value in sample.items():
-    if key == 'image':
-        if value is not None:
-            # HuggingFace 的 Parquet 图片格式通常是一个包含 'bytes' 键的字典
-            image_bytes = value['bytes']
-            print(f"【{key}】: [包含真实图片流，大小为 {len(image_bytes)} 字节]")
-            
-            # 将二进制字节流转换为真实的图片并保存
-            try:
-                image = Image.open(io.BytesIO(image_bytes))
-                save_path = "sample_image_0.png"
-                image.save(save_path)
-                print(f"  => 成功！已将该题干图片提取并保存为当前目录下的: {save_path} (你可以直接双击打开看图)")
-            except Exception as e:
-                print(f"  => 图片保存失败: {e}")
-        else:
-            print(f"【{key}】: None")
-            
-    elif isinstance(value, (list, tuple)):
-        # 如果是选项列表，逐行打印更清晰
-        print(f"【{key}】:")
-        for i, item in enumerate(value):
-            print(f"  {chr(65+i)}. {item}")
-            
+    if len(df) > 0:
+        row = df.iloc[0].to_dict()
+        print("\n=== first sample preview ===")
+        for k in ["sample_id", "ground_truth", "label_desc", "question", "choices"]:
+            if k in row:
+                print(f"{k}: {row[k]}")
+
+
+def inspect_jsonl(path: Path, n: int) -> None:
+    print(f"=== JSONL: {path} ===")
+    rows = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+                if len(rows) >= n:
+                    break
+
+    print(f"preview rows: {len(rows)}")
+    for i, row in enumerate(rows):
+        print(f"\n--- sample {i} ---")
+        print("sample_id:", row.get("sample_id"))
+        print("ground_truth:", row.get("ground_truth"))
+        print("label_desc:", row.get("label_desc"))
+        print("choices:", row.get("choices"))
+        q = row.get("question", "")
+        print("question:", (q[:220] + "...") if len(q) > 220 else q)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="查看退款场景数据集样本")
+    parser.add_argument("--file", required=True, help="待查看文件路径（.parquet / .jsonl）")
+    parser.add_argument("--num", type=int, default=3, help="预览样本数")
+    args = parser.parse_args()
+
+    path = Path(args.file)
+    if not path.exists():
+        raise FileNotFoundError(f"file not found: {path}")
+
+    if path.suffix.lower() == ".parquet":
+        inspect_parquet(path, args.num)
+    elif path.suffix.lower() == ".jsonl":
+        inspect_jsonl(path, args.num)
     else:
-        # 其他文本类直接完整打印
-        print(f"【{key}】: \n{value}")
-        
-    print("-" * 50)
+        raise ValueError("only .parquet or .jsonl is supported")
+
+
+if __name__ == "__main__":
+    main()
