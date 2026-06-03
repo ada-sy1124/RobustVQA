@@ -4,7 +4,7 @@
 
 ### 1.1 项目目标与任务定义
 
-RobustVQA 旨在通过强化学习（RL）训练一个在多模态问答任务中具备更强准确性、鲁棒性与可解释性的 VQA 系统。项目核心不是只优化最终答案，而是同时优化：
+RobustVQA 旨在通过强化学习训练一个在多模态问答任务中具备更强准确性、鲁棒性与可解释性的 VQA 系统。项目核心不是只优化最终答案，而是同时优化：
 - 最终答案正确性
 - 推理过程（CoT）的逻辑自洽性（Self-Consistency）
 - 推理过程可验证性（Verifiability）
@@ -24,7 +24,7 @@ RobustVQA 旨在通过强化学习（RL）训练一个在多模态问答任务�
 
 ### 1.2 现状挑战
 
-当前多模态模型在复杂科学问答（如 ScienceQA）上常见问题：
+当前多模态模型在复杂视觉问答上常见问题：
 - CoT 可能是事后合理化，并非驱动答案的真实因果链
 - 仅用二元准确率奖励（答对 1 / 答错 0）信号过于稀疏
 - 难以同时优化答对、逻辑可靠、输出规范
@@ -43,7 +43,7 @@ $$
 
 ---
 
-## 2. 强化学习奖励机制（重点）
+## 2. 强化学习奖励机制
 
 ### 2.1 总奖励架构
 
@@ -217,17 +217,4 @@ python -m vllm.entrypoints.openai.api_server \
 | `eval/` | 推理拉取与指标统计 |
 | `verl/` | RL 训练框架与扩展奖励逻辑 |
 
----
 
-## 7. 致谢与引用
-
-训练基础设施来自 ByteDance Seed 团队开源的 `verl / HybridFlow`。
-
-```bibtex
-@article{sheng2024hybridflow,
-  title   = {HybridFlow: A Flexible and Efficient RLHF Framework},
-  author  = {Guangming Sheng and Chi Zhang and Zilingfeng Ye and Xibin Wu and Wang Zhang and Ru Zhang and Yanghua Peng and Haibin Lin and Chuan Wu},
-  year    = {2024},
-  journal = {arXiv preprint arXiv: 2409.19256}
-}
-```
